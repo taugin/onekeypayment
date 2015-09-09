@@ -20,6 +20,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.cookie.Cookie;
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.protocol.HTTP;
@@ -29,7 +30,6 @@ import org.apache.http.util.EntityUtils;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.preference.PreferenceManager;
 import android.text.TextUtils;
 
 public class HttpManager {
@@ -189,7 +189,7 @@ public class HttpManager {
         return null;
     }
 
-    public Bitmap sendHttpGetImage(String url, String cookies) {
+    public Bitmap sendHttpGetBitmap(String url, String cookies) {
         Log.d(Log.TAG, "url : " + url);
         HttpUriRequest request = new HttpGet(url);
 
@@ -197,6 +197,7 @@ public class HttpManager {
         try {
             if (!TextUtils.isEmpty(cookies)) {
                 request.setHeader("Cookie", cookies);
+                Log.d(Log.TAG, "cookies : " + cookies);
             }
             httpResponse = mDefaultHttpClient.execute(request);
             if (httpResponse != null) {
@@ -217,6 +218,27 @@ public class HttpManager {
             }
         } catch (IOException e) {
             Log.d(Log.TAG, "e : " + e);
+        }
+        return null;
+    }
+
+    public String sendHttpPostByteArray(String url, byte[] byteArray) {
+        HttpPost httpPost = new HttpPost(url);
+        ByteArrayEntity bae = new ByteArrayEntity(byteArray);
+        httpPost.setEntity(bae);
+        try {
+            HttpResponse httpResponse = mDefaultHttpClient.execute(httpPost);
+            if (httpResponse != null) {
+                StatusLine statusLine = httpResponse.getStatusLine();
+                if (statusLine != null && statusLine.getStatusCode() == 200) {
+                    HttpEntity entity = httpResponse.getEntity();
+                    return EntityUtils.toString(entity, "utf-8");
+                }
+            }
+        } catch (ClientProtocolException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
         return null;
     }

@@ -1,11 +1,12 @@
 package com.android.onekeypayment;
 
-import android.annotation.SuppressLint;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+
+import android.annotation.SuppressLint;
 
 @SuppressLint({ "DefaultLocale", "SimpleDateFormat" })
 public class CmReadUrlGenerator {

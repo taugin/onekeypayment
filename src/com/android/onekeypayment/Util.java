@@ -1,7 +1,15 @@
 package com.android.onekeypayment;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.preference.PreferenceManager;
+import android.util.Base64;
 
 
 public class Util {
@@ -88,4 +96,69 @@ public class Util {
 
     public static final String GET_PAY_PAGE_URL = "http://123.57.27.125/read/cm/buy/apply/";
     public static final String GET_REAL_PAY_URL = "http://123.57.27.125/read/cm/buy/parse";
+
+    public static String bitmapToBase64(Bitmap bitmap) {
+        String result = "";
+        ByteArrayOutputStream bos = null;
+        try {
+            if (bitmap != null) {
+                bos = new ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, bos);// 将bitmap放入字节数组流中
+
+                bos.flush();// 将bos流缓存在内存中的数据全部输出，清空缓存
+                bos.close();
+
+                byte[] bitmapByte = bos.toByteArray();
+                result = Base64.encodeToString(bitmapByte, Base64.DEFAULT);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (null != null) {
+                try {
+                    bos.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return result;
+    }
+
+    public static byte[] bitmapToArray(Bitmap bitmap) {
+        ByteArrayOutputStream bos = null;
+        try {
+            if (bitmap != null) {
+                bos = new ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, bos);// 将bitmap放入字节数组流中
+                bos.flush();// 将bos流缓存在内存中的数据全部输出，清空缓存
+                bos.close();
+                byte[] bitmapByte = bos.toByteArray();
+                bos.close();
+                return bitmapByte;
+            }
+        } catch (Exception e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+        return null;
+    }
+
+    public static void saveBitmap(Bitmap bitmap) {
+        Log.d(Log.TAG, "保存图片");
+        File f = new File("/sdcard/", "verify.jpg");
+        if (f.exists()) {
+            f.delete();
+        }
+        try {
+            FileOutputStream out = new FileOutputStream(f);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, out);
+            out.flush();
+            out.close();
+            Log.d(Log.TAG, "已经保存");
+        } catch (FileNotFoundException e) {
+            Log.d(Log.TAG, "error : " + e);
+        } catch (IOException e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+    }
 }

@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.regex.Matcher;
@@ -20,6 +21,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
@@ -30,6 +32,7 @@ import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -47,17 +50,23 @@ public class PayDialog extends Dialog {
         URL_CM_READ = generator.generateUrl();
     }
 
+    private static final int MAX_RETRY_TIMES = 3;
     private MyReceiver mMyReceiver;
     private Context mContext;
     private boolean mRequesting = false;
     private NetworkState mNetworkState = new NetworkState();
     private Handler mHandler;
     private String mRequestUrl;
-    private WebView mWebViewForShow;
     private WebView mWebViewForPay;
     private ProgressBar mProgressBar;
     private String mOrderId;
+    private int mRetryTimes = 0;
 
+    enum RequestStep {
+        REQ_PAGE, REQ_PAY
+    }
+
+    private RequestStep mRequestStep;
     private long DEBUGTIME1;
     private long DEBUGTIME2;
     private long DEBUGTIME3;
@@ -72,14 +81,13 @@ public class PayDialog extends Dialog {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        mWebViewForShow = new WebView(mContext);
         mWebViewForPay = new WebView(mContext);
         mWebViewForPay.getSettings().setJavaScriptEnabled(true);
         mWebViewForPay.addJavascriptInterface(new InJavaScriptLocalObj(), "local_obj");
         mWebViewForPay.setWebViewClient(mWebViewClient);
         RelativeLayout layout = new RelativeLayout(mContext);
         RelativeLayout.LayoutParams rParams1 = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT);
-        layout.addView(mWebViewForShow, rParams1);
+        layout.addView(mWebViewForPay, rParams1);
         mProgressBar = new ProgressBar(mContext);
         RelativeLayout.LayoutParams rParams2 = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
         rParams2.addRule(RelativeLayout.CENTER_IN_PARENT);
@@ -149,8 +157,10 @@ public class PayDialog extends Dialog {
     private WebViewClient mWebViewClient = new WebViewClient() {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            // Log.d(Log.TAG, "url : " + url);
-            requestPayResultUrl(url);
+            // requestPayResultUrl(url);
+            if (mRequestStep == RequestStep.REQ_PAY) {
+                view.loadUrl(url);
+            }
             return true;
         }
 
@@ -164,7 +174,6 @@ public class PayDialog extends Dialog {
 
     /**
      * 通知服务器，支付完成
-     * 
      * @param url
      */
     private void notifyServerState(final String url) {
@@ -175,7 +184,16 @@ public class PayDialog extends Dialog {
                 String notifyUrl = url.replaceAll("&amp;", "&");
                 for (int count = 0; count < 3; count++) {
                     result = HttpManager.get(mContext).sendHttpGet(notifyUrl);
-                    if (!TextUtils.isEmpty(result)) {
+                    Log.d(Log.TAG, "result : " + result);
+                    if (!TextUtils.isEmpty(result)
+                            && result.equalsIgnoreCase("success")) {
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(mContext, "支付成功",
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                        });
                         break;
                     } else {
                         try {
@@ -186,8 +204,6 @@ public class PayDialog extends Dialog {
                     }
                 }
                 if (!TextUtils.isEmpty(result)) {
-                    // TODO :
-                    // loadDataWithBaseUrl(result);
                     dismissProgress();
                 }
             }
@@ -206,8 +222,6 @@ public class PayDialog extends Dialog {
                 String result = HttpManager.get(mContext).sendHttpGet(url);
                 Log.d(Log.TAG, "result : " + result);
                 processNotifyUrl(result);
-                // TODO:
-                // loadDataWithBaseUrl(result);
             }
         }.start();
     }
@@ -215,8 +229,30 @@ public class PayDialog extends Dialog {
     final class InJavaScriptLocalObj {
         @JavascriptInterface
         public void showSource(String content, String state, String url) {
-            Log.d(Log.TAG, "state : " + state);
-            if ("html".equals(state)) {
+            Log.d(Log.TAG, "mRequestStep : " + mRequestStep);
+            if (mRequestStep == RequestStep.REQ_PAGE) {
+                if (!TextUtils.isEmpty(content)) {
+                    String phoneNumber = getMobileNumber(content);
+                    Log.d(Log.TAG, "phoneNumber : " + phoneNumber);
+                    if (!TextUtils.isEmpty(phoneNumber)) {
+                        String result = requestVerifyCodeAnswer(content);
+                        if (!TextUtils.isEmpty(result)) {
+                            String payUrl = parsePayUrl(content, result);
+                            Log.d(Log.TAG, "payUrl : " + payUrl);
+                            if (!TextUtils.isEmpty(payUrl)) {
+                                execPay(payUrl);
+                            } else {
+                                retry();
+                            }
+                        } else {
+                            retry();
+                        }
+                    } else {
+                        retry();
+                    }
+                    mRequesting = false;
+                }
+            } else if (mRequestStep == RequestStep.REQ_PAY) {
                 if (!TextUtils.isEmpty(content)) {
                     processNotifyUrl(content);
                 } else {
@@ -224,6 +260,15 @@ public class PayDialog extends Dialog {
                 }
             }
         }
+    }
+
+    private void retry() {
+        if (mRetryTimes > MAX_RETRY_TIMES) {
+            return;
+        }
+        mRetryTimes++;
+        Log.d(Log.TAG, "正在进行第" + mRetryTimes + "次重试");
+        requestPaymentUrl();
     }
 
     private void loadUrlOnUiThread(final String url, final String cookie) {
@@ -270,115 +315,103 @@ public class PayDialog extends Dialog {
         if (TextUtils.isEmpty(mRequestUrl)) {
             return;
         }
+        mRequestStep = RequestStep.REQ_PAGE;
+        loadUrlOnUiThread(mRequestUrl, null);
         mRequesting = true;
-        new Thread(){
-            public void run() {
-                String pageContent = null;
-                String phoneNumber = null;
-                String result = null;
-                for (int count = 0; count < 1; count++) {
-                    Log.d(Log.TAG, "第" + (count + 1) + "次请求");
-                    // 请求支付页面
-                    pageContent = requestPaymentPage();
-                    // 从支付页面获取手机号
-                    phoneNumber = getMobileNumber(pageContent);
-
-                    if (!TextUtils.isEmpty(phoneNumber)) {
-                        /*
-                        // TODO: 请求支付url chukong 地址
-                        if (true) {
-                            break;
-                        }
-                        */
-                        result = requestRealPayUrl(pageContent);
-                        if (!TextUtils.isEmpty(result)) {
-                            try {
-                                JSONObject jobj = new JSONObject(result);
-                                String status = "";
-                                String msg = "";
-                                String data = "";
-                                if (jobj.has("status")) {
-                                    status = jobj.getString("status");
-                                }
-                                if (jobj.has("msg")) {
-                                    msg = jobj.getString("msg");
-                                }
-                                if (jobj.has("data")) {
-                                    data = jobj.getString("data");
-                                }
-                                if ("1".equals(status)) {
-                                    // 开始支付
-                                    // TODO:暂时注释真实支付
-                                    // execPay(data);
-                                } else {
-                                    Log.d(Log.TAG, "识别验证码失败, 重试");
-                                }
-                            } catch (JSONException e) {
-                                Log.d(Log.TAG, "error : " + e);
-                            }
-                        } else {
-                            Log.d(Log.TAG, "无法获取真实支付地址");
-                            break;
-                        }
-                    }
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        Log.d(Log.TAG, "error : " + e);
-                    }
-                }
-                mRequesting = false;
-                Log.d(Log.TAG, "time1 : " + (DEBUGTIME2 - DEBUGTIME1));
-                Log.d(Log.TAG, "time2 : " + (DEBUGTIME3 - DEBUGTIME2));
-            }
-        }.start();
     }
 
-    private String requestPaymentPage() {
-        if (TextUtils.isEmpty(mRequestUrl)) {
-            Log.d(Log.TAG, "mRequestUrl : " + mRequestUrl);
+    private String requestVerifyCodeAnswer(String content) {
+        Log.d(Log.TAG, "");
+        String verifyUrl = HttpParser.parseVerifyUrl(content);
+        if (TextUtils.isEmpty(verifyUrl)) {
             return null;
         }
-        String result = HttpManager.get(mContext).sendHttpGet(mRequestUrl);
-        if (!TextUtils.isEmpty(result)) {
-            loadDataWithBaseUrl(result);
-            writeToFile(result);
+        String httpHost = null;
+        try {
+            URL url = new URL(mRequestUrl);
+            String host = url.getHost();
+            String protocol = url.getProtocol();
+            httpHost = protocol + "://" + host;
+        } catch (MalformedURLException e) {
+            Log.d(Log.TAG, "error : " + e);
         }
-        DEBUGTIME3 = System.currentTimeMillis();
-        return result;
-    }
-
-    private void loadDataWithBaseUrl(final String content) {
-        mHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    URL url = new URL(mRequestUrl);
-                    String protocol = url.getProtocol();
-                    String host = url.getHost();
-                    mWebViewForShow.loadDataWithBaseURL(protocol + "://" + host, content, "text/html", "utf-8", null);
-                } catch(Exception e) {
-                }
-            }
-        });
-    }
-
-    private String requestRealPayUrl(String content) {
-        Log.d(Log.TAG, "");
-        String cookies = PreferenceManager.getDefaultSharedPreferences(mContext).getString("cookies", "");
-        HashMap<String, String> hashMap = new HashMap<String, String>();
-        hashMap.put("html", content);
-        hashMap.put("cookies", cookies);
-        hashMap.put("orderId", mOrderId);
-        String result = HttpManager.get(mContext).sendHttpPost(Util.GET_REAL_PAY_URL, hashMap);
+        if (TextUtils.isEmpty(httpHost)) {
+            return null;
+        }
+        String imgUrl = httpHost + verifyUrl;
+        Log.d(Log.TAG, "imgUrl : " + imgUrl);
+        String cookies = CookieManager.getInstance().getCookie(mRequestUrl);
+        Bitmap bitmap = HttpManager.get(mContext).sendHttpGetBitmap(imgUrl,
+                cookies);
+        // TODO: 测试下载图片
+        Util.saveBitmap(bitmap);
+        Log.d(Log.TAG, "bitmap : " + bitmap);
+        byte[] byteArray = Util.bitmapToArray(bitmap);
+        bitmap.recycle();
+        String result = HttpManager.get(mContext).sendHttpPostByteArray(
+                Util.GET_REAL_PAY_URL, byteArray);
         DEBUGTIME4 = System.currentTimeMillis();
         Log.d(Log.TAG, "result : " + result);
         return result;
     }
 
+    private String parsePayUrl(String content, String res) {
+        if (TextUtils.isEmpty(content)) {
+            return null;
+        }
+        if (TextUtils.isEmpty(res)) {
+            Log.d(Log.TAG, "Verification Code Answer is Null");
+            return null;
+        }
+
+        String answer = null;
+        try {
+            JSONObject jobject = new JSONObject(res);
+            String status = null;
+            String msg = null;
+            String data = null;
+            if (jobject.has("status")) {
+                status = jobject.getString("status");
+            }
+            if (jobject.has("msg")) {
+                msg = jobject.getString("msg");
+            }
+            if (jobject.has("data")) {
+                data = jobject.getString("data");
+            }
+            Log.d(Log.TAG, msg);
+            if (!"1".equalsIgnoreCase(status)) {
+                return null;
+            }
+            answer = data;
+        } catch (JSONException e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+        Log.d(Log.TAG, "answer : " + answer);
+        String urlPath = HttpParser.parseAnswerUrl(content, answer);
+        // Log.d(Log.TAG, "urlPath : " + urlPath);
+        if (TextUtils.isEmpty(urlPath)) {
+            return null;
+        }
+        String httpHost = null;
+        try {
+            URL url = new URL(mRequestUrl);
+            String host = url.getHost();
+            String protocol = url.getProtocol();
+            httpHost = protocol + "://" + host;
+        } catch (MalformedURLException e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+        if (TextUtils.isEmpty(httpHost)) {
+            return null;
+        }
+        return httpHost + urlPath;
+    }
+
     private void execPay(String url) {
         Log.d(Log.TAG, "url : " + url);
         String cookies = PreferenceManager.getDefaultSharedPreferences(mContext).getString("cookies", "");
+        mRequestStep = RequestStep.REQ_PAY;
         loadUrlOnUiThread(url, cookies);
     }
 
@@ -394,7 +427,6 @@ public class PayDialog extends Dialog {
         if (m != null && m.find()) {
             phoneNumber = m.group(m.groupCount());
         }
-        Log.d(Log.TAG, "phoneNumber : " + phoneNumber);
         return phoneNumber;
     }
 
@@ -414,8 +446,6 @@ public class PayDialog extends Dialog {
         Log.d(Log.TAG, "notifyUrl : " + notifyUrl);
         if (!TextUtils.isEmpty(notifyUrl)) {
             notifyServerState(notifyUrl);
-        } else {
-            
         }
     }
 
@@ -448,7 +478,7 @@ public class PayDialog extends Dialog {
                 }
             }
             // Log.d(Log.TAG, tmp);
-            Toast.makeText(context, tmp, 1).show();
+            Toast.makeText(context, tmp, Toast.LENGTH_SHORT).show();
         }
     }
 

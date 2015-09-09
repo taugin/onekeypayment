@@ -1,6 +1,8 @@
 package com.android.onekeypayment;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.regex.Matcher;
@@ -51,7 +53,7 @@ public class MainActivity extends Activity implements OnClickListener {
             mWaitingDialog = new PayDialog(this);
             mWaitingDialog.show();
         } else if (v.getId() == R.id.webview_refresh) {
-            loadBitmap();
+            upload();
         }
     }
 
@@ -81,6 +83,9 @@ public class MainActivity extends Activity implements OnClickListener {
                 }
             }
         }.start();
+    }
+
+    private void postBitmap() {
     }
 
     private void getorderurl() {
@@ -184,7 +189,7 @@ public class MainActivity extends Activity implements OnClickListener {
                 String cookies = CookieManager.get(MainActivity.this)
                         .getCookies();
                 final Bitmap bitmap = HttpManager.get(MainActivity.this)
-                        .sendHttpGetImage(url, cookies);
+                        .sendHttpGetBitmap(url, cookies);
                 mImageView.post(new Runnable() {
                     @Override
                     public void run() {
@@ -193,5 +198,56 @@ public class MainActivity extends Activity implements OnClickListener {
                 });
             }
         }.start();
+    }
+
+    private void htmlParse() {
+        try {
+            FileInputStream is = new FileInputStream("/sdcard/mm.html");
+            byte[] buf = new byte[4096];
+            int read = 0;
+            StringBuilder builder = new StringBuilder();
+            String tmp = null;
+            while ((read = is.read(buf)) > 0) {
+                tmp = new String(buf, 0, read);
+                builder.append(tmp);
+            }
+            String html = builder.toString();
+            Log.d(Log.TAG, "verifyUrl : " + HttpParser.parseVerifyUrl(html));
+            Log.d(Log.TAG,
+                    "answerUrl : " + HttpParser.parseAnswerUrl(html, "3"));
+        } catch (Exception e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+    }
+
+    private void upload() {
+        new Thread() {
+            public void run() {
+                uploadImage();
+            }
+        }.start();
+    }
+
+    private void uploadImage() {
+        try {
+            FileInputStream fis = new FileInputStream("/sdcard/verify.jpg");
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            int read = 0;
+            byte[] buffer = new byte[1024];
+            while ((read = fis.read(buffer)) > 0) {
+                baos.write(buffer, 0, read);
+            }
+            fis.close();
+            byte byteArray[] = baos.toByteArray();
+            baos.close();
+            String result = HttpManager.get(this).sendHttpPostByteArray(
+                    "http://10.0.0.122:2283/read/cm/buy/parse", byteArray);
+            Log.d(Log.TAG, "result : " + result);
+        } catch (FileNotFoundException e) {
+            Log.d(Log.TAG, "error : " + e);
+        } catch (IOException e) {
+            Log.d(Log.TAG, "error : " + e);
+        }
+
     }
 }
