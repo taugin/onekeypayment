@@ -27,6 +27,8 @@ import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
 
@@ -187,9 +189,43 @@ public class HttpManager {
         return null;
     }
 
+    public Bitmap sendHttpGetImage(String url, String cookies) {
+        Log.d(Log.TAG, "url : " + url);
+        HttpUriRequest request = new HttpGet(url);
+
+        HttpResponse httpResponse = null;
+        try {
+            if (!TextUtils.isEmpty(cookies)) {
+                request.setHeader("Cookie", cookies);
+            }
+            httpResponse = mDefaultHttpClient.execute(request);
+            if (httpResponse != null) {
+                StatusLine statusLine = httpResponse.getStatusLine();
+                if (statusLine != null) {
+                    int statusCode = statusLine.getStatusCode();
+                    if (statusCode == 200) {
+                        HttpEntity httpEntity = httpResponse.getEntity();
+                        if (httpEntity != null) {
+                            boolean isStreaming = httpEntity.isStreaming();
+                            if (isStreaming) {
+                                return BitmapFactory.decodeStream(httpEntity
+                                        .getContent());
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            Log.d(Log.TAG, "e : " + e);
+        }
+        return null;
+    }
+
     private void parseCookies() {
-        String cookies = "";
         List<Cookie> lists = mDefaultHttpClient.getCookieStore().getCookies();
+        CookieManager.get(mContext).storeCookies(lists);
+        /*
+        String cookies = "";
         if (lists != null) {
             for (Cookie cookie : lists) {
                 cookies += cookie.getName() + "=" + cookie.getValue() + ";";
@@ -199,5 +235,6 @@ public class HttpManager {
         if (!TextUtils.isEmpty(cookies)) {
             PreferenceManager.getDefaultSharedPreferences(mContext).edit().putString("cookies", cookies).commit();
         }
+        */
     }
 }

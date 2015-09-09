@@ -86,6 +86,6 @@ public class Util {
         return urlRegex;
     }
 
-    public static final String GET_PAY_PAGE_URL = "http://10.0.0.122:2283/reade/cm/buy/apply/";
-    public static final String GET_REAL_PAY_URL = "http://10.0.0.122:2283/reade/cm/buy/parse";
+    public static final String GET_PAY_PAGE_URL = "http://123.57.27.125/read/cm/buy/apply/";
+    public static final String GET_REAL_PAY_URL = "http://123.57.27.125/read/cm/buy/parse";
 }

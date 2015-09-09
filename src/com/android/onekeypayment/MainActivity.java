@@ -10,6 +10,7 @@ import org.json.JSONObject;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
@@ -18,17 +19,20 @@ import android.view.View.OnClickListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Button;
+import android.widget.ImageView;
 
 public class MainActivity extends Activity implements OnClickListener {
 
     private PayDialog mWaitingDialog = null;
     private WebView mWebView;
+    private ImageView mImageView;
     @SuppressLint("JavascriptInterface")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
         mWebView = (WebView) findViewById(R.id.webview);
+        mImageView = (ImageView) findViewById(R.id.imageview);
         mWebView.getSettings().setJavaScriptEnabled(true);
         mWebView.addJavascriptInterface(new InJavaScriptLocalObj(), "local_obj");
 
@@ -47,7 +51,7 @@ public class MainActivity extends Activity implements OnClickListener {
             mWaitingDialog = new PayDialog(this);
             mWaitingDialog.show();
         } else if (v.getId() == R.id.webview_refresh) {
-            test();
+            loadBitmap();
         }
     }
 
@@ -170,5 +174,24 @@ public class MainActivity extends Activity implements OnClickListener {
         } catch(Exception e) {
             
         }
+    }
+
+    private void loadBitmap() {
+        new Thread() {
+            public void run() {
+                String url = "http://wap.cmread.com/rdo/vc/avi?ln=1579_11244__2_&amp;t1=16687&amp;pftype=RDOOrder&amp;cm=J0080002&amp;picw=80&amp;pich=26&amp;picfs=20&amp;vt=2";
+                // url = url.replaceAll("&amp;", "&");
+                String cookies = CookieManager.get(MainActivity.this)
+                        .getCookies();
+                final Bitmap bitmap = HttpManager.get(MainActivity.this)
+                        .sendHttpGetImage(url, cookies);
+                mImageView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        mImageView.setImageBitmap(bitmap);
+                    }
+                });
+            }
+        }.start();
     }
 }
