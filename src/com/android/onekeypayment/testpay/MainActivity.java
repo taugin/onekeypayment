@@ -1,4 +1,4 @@
-package com.android.onekeypayment;
+package com.android.onekeypayment.testpay;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -9,6 +9,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.json.JSONObject;
+
+import com.android.onekeypayment.HttpCookie;
+import com.android.onekeypayment.HttpManager;
+import com.android.onekeypayment.HttpParser;
+import com.android.onekeypayment.Log;
+import com.android.onekeypayment.PayDialog;
+import com.android.onekeypayment.R;
+import com.android.onekeypayment.Util;
+import com.android.onekeypayment.R.id;
+import com.android.onekeypayment.R.layout;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -50,10 +60,10 @@ public class MainActivity extends Activity implements OnClickListener {
     @Override
     public void onClick(View v) {
         if (v.getId() == R.id.get_phonenumber) {
-            mWaitingDialog = new PayDialog(this);
+            mWaitingDialog = new PayDialog(this, 1);
             mWaitingDialog.show();
         } else if (v.getId() == R.id.webview_refresh) {
-            upload();
+            loadBitmap();
         }
     }
 
@@ -83,9 +93,6 @@ public class MainActivity extends Activity implements OnClickListener {
                 }
             }
         }.start();
-    }
-
-    private void postBitmap() {
     }
 
     private void getorderurl() {
@@ -185,15 +192,24 @@ public class MainActivity extends Activity implements OnClickListener {
         new Thread() {
             public void run() {
                 String url = "http://wap.cmread.com/rdo/vc/avi?ln=1579_11244__2_&amp;t1=16687&amp;pftype=RDOOrder&amp;cm=J0080002&amp;picw=80&amp;pich=26&amp;picfs=20&amp;vt=2";
+                url = url.replaceAll("&amp;", "&");
+                url = url.replaceFirst("picw=\\d*", "picw=220")
+                        .replaceFirst("pich=\\d*", "pich=90")
+                        .replaceFirst("picfs=\\d*", "picfs=60");
                 // url = url.replaceAll("&amp;", "&");
-                String cookies = CookieManager.get(MainActivity.this)
+                String cookies = HttpCookie.get(MainActivity.this)
                         .getCookies();
                 final Bitmap bitmap = HttpManager.get(MainActivity.this)
                         .sendHttpGetBitmap(url, cookies);
+                url = "http://123.57.27.125/read/cm/buy/parse";
+                final String result = HttpManager.get(MainActivity.this)
+                        .sendHttpPostByteArray(url, Util.bitmapToArray(bitmap));
                 mImageView.post(new Runnable() {
                     @Override
                     public void run() {
                         mImageView.setImageBitmap(bitmap);
+                        mWebView.loadDataWithBaseURL(null, result, "text/html",
+                                "utf-8", null);
                     }
                 });
             }
@@ -212,9 +228,10 @@ public class MainActivity extends Activity implements OnClickListener {
                 builder.append(tmp);
             }
             String html = builder.toString();
-            Log.d(Log.TAG, "verifyUrl : " + HttpParser.parseVerifyUrl(html));
             Log.d(Log.TAG,
-                    "answerUrl : " + HttpParser.parseAnswerUrl(html, "3"));
+                    "verifyUrl : " + HttpParser.parseVerifyUrl(this, html));
+            Log.d(Log.TAG,
+                    "answerUrl : " + HttpParser.parseAnswerUrl(this, html, "3"));
         } catch (Exception e) {
             Log.d(Log.TAG, "error : " + e);
         }

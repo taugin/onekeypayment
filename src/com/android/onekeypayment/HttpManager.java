@@ -190,14 +190,14 @@ public class HttpManager {
     }
 
     public Bitmap sendHttpGetBitmap(String url, String cookies) {
-        Log.d(Log.TAG, "url : " + url);
+        // Log.d(Log.TAG, "url : " + url);
         HttpUriRequest request = new HttpGet(url);
 
         HttpResponse httpResponse = null;
         try {
             if (!TextUtils.isEmpty(cookies)) {
                 request.setHeader("Cookie", cookies);
-                Log.d(Log.TAG, "cookies : " + cookies);
+                // Log.d(Log.TAG, "cookies : " + cookies);
             }
             httpResponse = mDefaultHttpClient.execute(request);
             if (httpResponse != null) {
@@ -245,18 +245,6 @@ public class HttpManager {
 
     private void parseCookies() {
         List<Cookie> lists = mDefaultHttpClient.getCookieStore().getCookies();
-        CookieManager.get(mContext).storeCookies(lists);
-        /*
-        String cookies = "";
-        if (lists != null) {
-            for (Cookie cookie : lists) {
-                cookies += cookie.getName() + "=" + cookie.getValue() + ";";
-            }
-        }
-        Log.d(Log.TAG, "cookies : " + cookies);
-        if (!TextUtils.isEmpty(cookies)) {
-            PreferenceManager.getDefaultSharedPreferences(mContext).edit().putString("cookies", cookies).commit();
-        }
-        */
+        // HttpCookie.get(mContext).storeCookies(lists);
     }
 }

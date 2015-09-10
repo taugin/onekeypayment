@@ -1,4 +1,4 @@
-package com.android.onekeypayment;
+package com.android.onekeypayment.testpay;
 
 import android.app.Application;
 

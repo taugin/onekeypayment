@@ -10,38 +10,38 @@ import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.preference.PreferenceManager;
 
-public class CookieManager {
+public class HttpCookie {
 
     private Context mContext;
-    private static CookieManager sCookieManager;
+    private static HttpCookie sCookieManager;
 
-    private CookieManager(Context context) {
+    private HttpCookie(Context context) {
         mContext = context;
     }
 
-    public static CookieManager get(Context context) {
+    public static HttpCookie get(Context context) {
         if (sCookieManager == null) {
-            sCookieManager = new CookieManager(context);
+            sCookieManager = new HttpCookie(context);
         }
         return sCookieManager;
     }
 
     public void storeCookies(List<Cookie> lists) {
-        if (lists != null) {
+        if (lists != null && lists.size() > 0) {
             SharedPreferences sharedPreferences = mContext
                     .getSharedPreferences("wap.cmdread.com",
                             Context.MODE_PRIVATE);
             Editor editor = sharedPreferences.edit();
-            Log.d(Log.TAG, "++++++++++++++++++++++++++++++++++++++++++++");
+            // Log.d(Log.TAG, "++++++++++++++++++++++++++++++++++++++++++++");
             for (Cookie cookie : lists) {
                 PreferenceManager.getDefaultSharedPreferences(mContext).edit()
                         .putString(cookie.getName(), cookie.getValue())
                         .commit();
                 editor.putString(cookie.getName(),
                         cookie.getValue());
-                Log.d(Log.TAG, cookie.getName() + " : " + cookie.getValue());
+                // Log.d(Log.TAG, cookie.getName() + " : " + cookie.getValue());
             }
-            Log.d(Log.TAG, "============================================");
+            // Log.d(Log.TAG, "============================================");
             editor.commit();
         }
     }

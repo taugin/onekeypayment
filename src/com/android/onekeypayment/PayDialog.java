@@ -9,14 +9,12 @@ import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.annotation.SuppressLint;
-import android.app.Dialog;
+import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -26,28 +24,28 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.Handler;
-import android.preference.PreferenceManager;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
-import android.widget.Toast;
 
 @SuppressLint("SetJavaScriptEnabled")
-public class PayDialog extends Dialog {
+public class PayDialog extends ProgressDialog {
     public static final String URL_CM_WAP_A = "http://a.10086.cn/pams2/l/s.do?j=l&c=1426&ver=2&p=72";
     public static final String URL_CM_WAP = "http://wap.10086.cn/js/index.html";
     public static final String URL_CM_READ;
     static {
         CmReadUrlGenerator generator = new CmReadUrlGenerator();
         URL_CM_READ = generator.generateUrl();
+    }
+
+    enum RequestStep {
+        REQ_PAGE, REQ_PAY
     }
 
     private static final int MAX_RETRY_TIMES = 3;
@@ -61,21 +59,23 @@ public class PayDialog extends Dialog {
     private ProgressBar mProgressBar;
     private String mOrderId;
     private int mRetryTimes = 0;
-
-    enum RequestStep {
-        REQ_PAGE, REQ_PAY
-    }
-
     private RequestStep mRequestStep;
+    private int mPayPrice = -1;
+    private PayResult mPayResult;
+
     private long DEBUGTIME1;
     private long DEBUGTIME2;
     private long DEBUGTIME3;
     private long DEBUGTIME4;
 
-    public PayDialog(Context context) {
-        super(context, android.R.style.Theme_NoTitleBar);
+    public PayDialog(Context context, int price) {
+        super(context);
         setCanceledOnTouchOutside(false);
+        setCancelable(false);
         mContext = context;
+        mPayPrice = price;
+        setMessage("正在支付，请稍后 ...");
+        mPayResult = new PayResult();
     }
 
     @Override
@@ -92,7 +92,8 @@ public class PayDialog extends Dialog {
         RelativeLayout.LayoutParams rParams2 = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
         rParams2.addRule(RelativeLayout.CENTER_IN_PARENT);
         layout.addView(mProgressBar, rParams2);
-        setContentView(layout);
+        // setContentView(layout);
+        /*
         DisplayMetrics dm = mContext.getResources().getDisplayMetrics();
         WindowManager.LayoutParams params = getWindow().getAttributes();
         params.height = (int) (0.6f * dm.heightPixels);
@@ -100,29 +101,36 @@ public class PayDialog extends Dialog {
         params.dimAmount = 0.5f;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         getWindow().setAttributes(params);
+        */
         init();
     }
 
     private void init() {
         mHandler = new Handler();
+        mHandler.postDelayed(mDismissRunnable, 60 * 1000);
+        if (mPayPrice <= 0) {
+            setPayResult(PayResult.PAY_FAILED, "支付金额必须大于0");
+            dismissProgress();
+            return;
+        }
+
         mMyReceiver = new MyReceiver();
         IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
         mContext.registerReceiver(mMyReceiver, filter);
-
         // mRequestUrl = URL_CM_READ;
         // startRequestIfReady();
-        // mHandler.postDelayed(mDismissRunnable, 30 * 1000);
-        getOrder(1);
+        getOrder(mPayPrice);
     }
 
     private void getOrder(final int price) {
-        Log.d(Log.TAG, "price : " + price);
+        setDialogMessage("正在获取订单号");
         new Thread(){
             public void run() {
                 Log.d(Log.TAG, "");
                 String result = HttpManager.get(mContext).sendHttpGet(Util.GET_PAY_PAGE_URL + price);
                 if (TextUtils.isEmpty(result)) {
                     Log.d(Log.TAG, "result : " + result);
+                    setPayResult(PayResult.PAY_FAILED, "无法获取订单号");
                 }
                 try {
                     JSONObject jobj = new JSONObject(result);
@@ -154,12 +162,40 @@ public class PayDialog extends Dialog {
         }.start();
     }
 
+    public PayResult getPayResult() {
+        return mPayResult;
+    }
+
+    private boolean isPaying() {
+        return isShowing();
+    }
+
+    private void setPayResult(int payState, String payReason) {
+        setPayResult(payState, payReason, null);
+    }
+
+    private void setPayResult(int payState, String payReason, String orderId) {
+        mPayResult.mPayState = payState;
+        mPayResult.mReason = payReason;
+        mPayResult.mTime = System.currentTimeMillis();
+        mPayResult.mOrderId = orderId;
+        mPayResult.mPrice = mPayPrice;
+    }
+
+    private void setDialogMessage(final String message) {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                setMessage(message);
+            }
+        });
+    }
+
     private WebViewClient mWebViewClient = new WebViewClient() {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            // requestPayResultUrl(url);
             if (mRequestStep == RequestStep.REQ_PAY) {
-                view.loadUrl(url);
+                requestPayResultUrl(url);
             }
             return true;
         }
@@ -177,23 +213,15 @@ public class PayDialog extends Dialog {
      * @param url
      */
     private void notifyServerState(final String url) {
-        Log.d(Log.TAG, "url : " + url);
+        Log.d(Log.TAG, "支付已经完成，开始通知服务器支付状态");
         new Thread(){
             public void run() {
                 String result = null;
-                String notifyUrl = url.replaceAll("&amp;", "&");
+                final String notifyUrl = url.replaceAll("&amp;", "&");
                 for (int count = 0; count < 3; count++) {
                     result = HttpManager.get(mContext).sendHttpGet(notifyUrl);
                     Log.d(Log.TAG, "result : " + result);
-                    if (!TextUtils.isEmpty(result)
-                            && result.equalsIgnoreCase("success")) {
-                        mHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                Toast.makeText(mContext, "支付成功",
-                                        Toast.LENGTH_SHORT).show();
-                            }
-                        });
+                    if (!TextUtils.isEmpty(result)) {
                         break;
                     } else {
                         try {
@@ -203,8 +231,13 @@ public class PayDialog extends Dialog {
                         }
                     }
                 }
-                if (!TextUtils.isEmpty(result)) {
+                // 查询支付状态
+                if (!TextUtils.isEmpty(result)
+                        && result.equalsIgnoreCase("success")) {
+                    setPayResult(PayResult.PAY_SUCCESS, notifyUrl, mOrderId);
                     dismissProgress();
+                } else {
+                    setPayResult(PayResult.PAY_FAILED, "通知服务器订单状态失败");
                 }
             }
         }.start();
@@ -212,15 +245,13 @@ public class PayDialog extends Dialog {
 
     /**
      * 获取支付成功页面，取得通知服务器的url地址
-     * 
      * @param url
      */
     private void requestPayResultUrl(final String url) {
-        Log.d(Log.TAG, "url : " + url);
+        Log.d(Log.TAG, "重定向至支付结果页面");
         new Thread(){
             public void run() {
                 String result = HttpManager.get(mContext).sendHttpGet(url);
-                Log.d(Log.TAG, "result : " + result);
                 processNotifyUrl(result);
             }
         }.start();
@@ -231,15 +262,19 @@ public class PayDialog extends Dialog {
         public void showSource(String content, String state, String url) {
             Log.d(Log.TAG, "mRequestStep : " + mRequestStep);
             if (mRequestStep == RequestStep.REQ_PAGE) {
-                if (!TextUtils.isEmpty(content)) {
+                if (!TextUtils.isEmpty(content) && isPaying()) {
+                    setDialogMessage("正在解析手机号");
                     String phoneNumber = getMobileNumber(content);
                     Log.d(Log.TAG, "phoneNumber : " + phoneNumber);
-                    if (!TextUtils.isEmpty(phoneNumber)) {
+                    if (!TextUtils.isEmpty(phoneNumber) && isPaying()) {
+                        setDialogMessage("正在分析验证码答案");
                         String result = requestVerifyCodeAnswer(content);
-                        if (!TextUtils.isEmpty(result)) {
+                        if (!TextUtils.isEmpty(result) && isPaying()) {
+                            setDialogMessage("正在分析支付地址");
                             String payUrl = parsePayUrl(content, result);
-                            Log.d(Log.TAG, "payUrl : " + payUrl);
-                            if (!TextUtils.isEmpty(payUrl)) {
+                            // Log.d(Log.TAG, "payUrl : " + payUrl);
+                            if (!TextUtils.isEmpty(payUrl) && isPaying()) {
+                                setDialogMessage("开始支付");
                                 execPay(payUrl);
                             } else {
                                 retry();
@@ -250,25 +285,26 @@ public class PayDialog extends Dialog {
                     } else {
                         retry();
                     }
-                    mRequesting = false;
-                }
-            } else if (mRequestStep == RequestStep.REQ_PAY) {
-                if (!TextUtils.isEmpty(content)) {
-                    processNotifyUrl(content);
                 } else {
-                    Log.d(Log.TAG, "Content is Null");
+                    retry();
                 }
             }
+            mRequesting = false;
         }
     }
 
     private void retry() {
         if (mRetryTimes > MAX_RETRY_TIMES) {
+            setPayResult(PayResult.PAY_FAILED, "无法识别验证码");
+            dismissProgress();
             return;
         }
         mRetryTimes++;
         Log.d(Log.TAG, "正在进行第" + mRetryTimes + "次重试");
-        requestPaymentUrl();
+        setDialogMessage("正在进行第" + mRetryTimes + "次重试");
+        if (isPaying()) {
+            requestPaymentUrl();
+        }
     }
 
     private void loadUrlOnUiThread(final String url, final String cookie) {
@@ -293,7 +329,7 @@ public class PayDialog extends Dialog {
             @Override
             public void run() {
                 mProgressBar.setVisibility(View.INVISIBLE);
-                // dismiss();
+                dismiss();
             }
         });
     }
@@ -316,13 +352,14 @@ public class PayDialog extends Dialog {
             return;
         }
         mRequestStep = RequestStep.REQ_PAGE;
+        setDialogMessage("开始请求支付页面");
         loadUrlOnUiThread(mRequestUrl, null);
         mRequesting = true;
     }
 
     private String requestVerifyCodeAnswer(String content) {
         Log.d(Log.TAG, "");
-        String verifyUrl = HttpParser.parseVerifyUrl(content);
+        String verifyUrl = HttpParser.parseVerifyUrl(mContext, content);
         if (TextUtils.isEmpty(verifyUrl)) {
             return null;
         }
@@ -344,10 +381,16 @@ public class PayDialog extends Dialog {
         Bitmap bitmap = HttpManager.get(mContext).sendHttpGetBitmap(imgUrl,
                 cookies);
         // TODO: 测试下载图片
-        Util.saveBitmap(bitmap);
-        Log.d(Log.TAG, "bitmap : " + bitmap);
+        // Util.saveBitmap(bitmap);
+        // Log.d(Log.TAG, "bitmap : " + bitmap);
+        if (bitmap == null) {
+            return null;
+        }
         byte[] byteArray = Util.bitmapToArray(bitmap);
         bitmap.recycle();
+        if (byteArray == null) {
+            return null;
+        }
         String result = HttpManager.get(mContext).sendHttpPostByteArray(
                 Util.GET_REAL_PAY_URL, byteArray);
         DEBUGTIME4 = System.currentTimeMillis();
@@ -379,7 +422,6 @@ public class PayDialog extends Dialog {
             if (jobject.has("data")) {
                 data = jobject.getString("data");
             }
-            Log.d(Log.TAG, msg);
             if (!"1".equalsIgnoreCase(status)) {
                 return null;
             }
@@ -388,7 +430,7 @@ public class PayDialog extends Dialog {
             Log.d(Log.TAG, "error : " + e);
         }
         Log.d(Log.TAG, "answer : " + answer);
-        String urlPath = HttpParser.parseAnswerUrl(content, answer);
+        String urlPath = HttpParser.parseAnswerUrl(mContext, content, answer);
         // Log.d(Log.TAG, "urlPath : " + urlPath);
         if (TextUtils.isEmpty(urlPath)) {
             return null;
@@ -409,43 +451,22 @@ public class PayDialog extends Dialog {
     }
 
     private void execPay(String url) {
-        Log.d(Log.TAG, "url : " + url);
-        String cookies = PreferenceManager.getDefaultSharedPreferences(mContext).getString("cookies", "");
+        Log.d(Log.TAG, "开始支付");
         mRequestStep = RequestStep.REQ_PAY;
-        loadUrlOnUiThread(url, cookies);
+        loadUrlOnUiThread(url, null);
     }
 
     private String getMobileNumber(String html) {
-        if (TextUtils.isEmpty(html)) {
-            Log.d(Log.TAG, "getMobileNumber html is empty");
-            return null;
-        }
-        String telRegex = Util.getMobileReg(mContext);
-        Pattern p = Pattern.compile(telRegex);
-        Matcher m = p.matcher(html);
-        String phoneNumber = null;
-        if (m != null && m.find()) {
-            phoneNumber = m.group(m.groupCount());
-        }
-        return phoneNumber;
+        return HttpParser.parsePhoneNumber(mContext, html);
     }
 
     private void processNotifyUrl(String html) {
-        Log.d(Log.TAG, "");
-        if (TextUtils.isEmpty(html)) {
-            Log.d(Log.TAG, "getNotifiyUrl html is empty");
-            return;
-        }
-        String urlRegex = Util.getUrlReg(mContext);
-        Pattern p = Pattern.compile(urlRegex);
-        Matcher m = p.matcher(html);
-        String notifyUrl = null;
-        if (m != null && m.find()) {
-            notifyUrl = m.group(m.groupCount());
-        }
-        Log.d(Log.TAG, "notifyUrl : " + notifyUrl);
-        if (!TextUtils.isEmpty(notifyUrl)) {
+        String notifyUrl = HttpParser.parseNotifyUrl(mContext, html);
+        if (!TextUtils.isEmpty(notifyUrl) && isPaying()) {
             notifyServerState(notifyUrl);
+        } else {
+            Log.d(Log.TAG, "notifyUrl : " + notifyUrl);
+            setPayResult(PayResult.PAY_FAILED, "无法获取商户通知地址");
         }
     }
 
@@ -478,7 +499,7 @@ public class PayDialog extends Dialog {
                 }
             }
             // Log.d(Log.TAG, tmp);
-            Toast.makeText(context, tmp, Toast.LENGTH_SHORT).show();
+            // Toast.makeText(context, tmp, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -530,7 +551,7 @@ public class PayDialog extends Dialog {
         restoreOldNetworkState();
         super.dismiss();
     }
-    
+
     class NetworkState {
         public boolean wifiChanged;
         public boolean dataChanged;
@@ -551,7 +572,8 @@ public class PayDialog extends Dialog {
     private Runnable mDismissRunnable = new Runnable() {
         @Override
         public void run() {
-            dismiss();
+            setPayResult(PayResult.PAY_FAILED, "支付支付超时");
+            dismissProgress();
         }
     };
 

@@ -20,7 +20,7 @@ public class NetworkManager {
     }
 
     /**
-     * �����ֻ���ƶ����
+     * 打开关闭移动数据网络
      */
     public static void setMobileData(Context context, boolean enabled) {
         try {
@@ -38,12 +38,10 @@ public class NetworkManager {
     }
 
     /**
-     * �����ֻ��ƶ���ݵ�״̬
+     * 获取移动数据网络状态
      * 
      * @param pContext
      * @param arg
-     *            Ĭ����null
-     * @return true ���� false δ����
      */
     public static boolean getMobileDataState(Context pContext, Object[] arg) {
         try {

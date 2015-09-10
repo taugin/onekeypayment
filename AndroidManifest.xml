@@ -20,11 +20,11 @@
 	<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />  
     <application
-        android:name="com.android.onekeypayment.App"
+        android:name="com.android.onekeypayment.testpay.App"
         android:label="@string/app_name"
         android:allowBackup="true">
         <activity
-            android:name="com.android.onekeypayment.MainActivity"
+            android:name="com.android.onekeypayment.testpay.ShowPayActivity"
             android:label="@string/app_name"
             android:theme="@android:style/Theme.NoTitleBar"
             >
