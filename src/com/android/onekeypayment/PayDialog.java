@@ -110,7 +110,7 @@ public class PayDialog extends ProgressDialog {
         mHandler.postDelayed(mDismissRunnable, 120 * 1000);
         if (mPayPrice <= 0) {
             setPayResult(PayResult.PAY_FAILED, "支付金额必须大于0");
-            dismissProgress();
+            dismissDialog();
             return;
         }
 
@@ -131,7 +131,7 @@ public class PayDialog extends ProgressDialog {
                 if (TextUtils.isEmpty(result)) {
                     Log.d(Log.TAG, "result : " + result);
                     setPayResult(PayResult.PAY_FAILED, "无法获取订单号");
-                    dismissProgress();
+                    dismissDialog();
                     return;
                 }
                 try {
@@ -163,7 +163,7 @@ public class PayDialog extends ProgressDialog {
                         DEBUGTIME1 = System.currentTimeMillis();
                         startRequestIfReady();
                     } else {
-                        dismissProgress();
+                        dismissDialog();
                     }
                 } catch(Exception e) {
                     Log.d(Log.TAG, "error : " + e);
@@ -248,7 +248,7 @@ public class PayDialog extends ProgressDialog {
                 } else {
                     setPayResult(PayResult.PAY_FAILED, "支付已成功，但通知服务器订单状态失败");
                 }
-                dismissProgress();
+                dismissDialog();
             }
         }.start();
     }
@@ -296,7 +296,9 @@ public class PayDialog extends ProgressDialog {
                         retry();
                     }
                 } else {
-                    retry();
+                    if (mRetryTimes > MAX_RETRY_TIMES) {
+                        retry();
+                    }
                 }
             }
             mRequesting = false;
@@ -304,12 +306,12 @@ public class PayDialog extends ProgressDialog {
     }
 
     private void retry() {
-        if (mRetryTimes > MAX_RETRY_TIMES - 1) {
+        mRetryTimes++;
+        if (mRetryTimes > MAX_RETRY_TIMES) {
             setPayResult(PayResult.PAY_FAILED, "无法识别验证码");
-            dismissProgress();
+            dismissDialog();
             return;
         }
-        mRetryTimes++;
         Log.d(Log.TAG, "正在进行第" + mRetryTimes + "次重试");
         setDialogMessage("正在进行第" + mRetryTimes + "次重试");
         if (isPaying()) {
@@ -334,7 +336,7 @@ public class PayDialog extends ProgressDialog {
         });
     }
 
-    private void dismissProgress() {
+    private void dismissDialog() {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -585,7 +587,7 @@ public class PayDialog extends ProgressDialog {
         @Override
         public void run() {
             setPayResult(PayResult.PAY_FAILED, "支付支付超时");
-            dismissProgress();
+            dismissDialog();
         }
     };
 
