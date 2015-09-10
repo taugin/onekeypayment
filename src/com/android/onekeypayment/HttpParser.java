@@ -19,8 +19,9 @@ public class HttpParser {
 
     public static String parseVerifyUrl(Context context, String html) {
         try {
+            String cssQuery = Util.getVerifyCodeCssQuery(context);
             Document doc = Jsoup.parse(html);
-            Elements imgAvi = doc.select("img[src^=/rdo/vc/avi");
+            Elements imgAvi = doc.select(cssQuery);
             Element element = imgAvi.first();
             String verifyUrl = element.attr("src");
             verifyUrl = verifyUrl.replaceFirst("picw=\\d*", "picw=220")
@@ -36,9 +37,10 @@ public class HttpParser {
     public static String parseAnswerUrl(Context context, String html,
             String answer) {
         try {
+            String cssQuery = Util.getAnswerCssQuery(context);
+            cssQuery = String.format(cssQuery, answer);
             Document doc = Jsoup.parse(html);
-            Elements imgAvi = doc.select("img[src^=/rdo/images/verification/"
-                    + answer + ".png");
+            Elements imgAvi = doc.select(cssQuery);
             String ansUrl = imgAvi.first().parent().attr("href");
             return ansUrl;
         } catch (Exception e) {

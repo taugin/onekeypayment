@@ -107,7 +107,7 @@ public class PayDialog extends ProgressDialog {
 
     private void init() {
         mHandler = new Handler();
-        mHandler.postDelayed(mDismissRunnable, 60 * 1000);
+        mHandler.postDelayed(mDismissRunnable, 120 * 1000);
         if (mPayPrice <= 0) {
             setPayResult(PayResult.PAY_FAILED, "支付金额必须大于0");
             dismissProgress();
@@ -131,6 +131,8 @@ public class PayDialog extends ProgressDialog {
                 if (TextUtils.isEmpty(result)) {
                     Log.d(Log.TAG, "result : " + result);
                     setPayResult(PayResult.PAY_FAILED, "无法获取订单号");
+                    dismissProgress();
+                    return;
                 }
                 try {
                     JSONObject jobj = new JSONObject(result);
@@ -147,6 +149,14 @@ public class PayDialog extends ProgressDialog {
                     }
                     if (jobj.has("orderId")) {
                         mOrderId = jobj.getString("orderId");
+                    }
+                    if (jobj.has("verifyCodeQuery")) {
+                        String cssQuery = jobj.getString("verifyCodeQuery");
+                        Util.setVerifyCodeCssQuery(mContext, cssQuery);
+                    }
+                    if (jobj.has("answerQuery")) {
+                        String cssQuery = jobj.getString("answerQuery");
+                        Util.setAnswerCssQuery(mContext, cssQuery);
                     }
                     Log.d(Log.TAG, "mRequestUrl : " + mRequestUrl);
                     if (!TextUtils.isEmpty(mRequestUrl)) {
@@ -203,7 +213,7 @@ public class PayDialog extends ProgressDialog {
         @Override
         public void onPageFinished(WebView view, String url) {
             // Log.d(Log.TAG, "url : " + url);
-            view.loadUrl("javascript:" + Util.GET_HTLM);
+            view.loadUrl("javascript:" + Util.JS_SHOW_HTML);
             view.loadUrl("javascript:showHtmlSource('" + url + "')");
         }
     };
@@ -235,10 +245,10 @@ public class PayDialog extends ProgressDialog {
                 if (!TextUtils.isEmpty(result)
                         && result.equalsIgnoreCase("success")) {
                     setPayResult(PayResult.PAY_SUCCESS, notifyUrl, mOrderId);
-                    dismissProgress();
                 } else {
-                    setPayResult(PayResult.PAY_FAILED, "通知服务器订单状态失败");
+                    setPayResult(PayResult.PAY_FAILED, "支付已成功，但通知服务器订单状态失败");
                 }
+                dismissProgress();
             }
         }.start();
     }
@@ -294,7 +304,7 @@ public class PayDialog extends ProgressDialog {
     }
 
     private void retry() {
-        if (mRetryTimes > MAX_RETRY_TIMES) {
+        if (mRetryTimes > MAX_RETRY_TIMES - 1) {
             setPayResult(PayResult.PAY_FAILED, "无法识别验证码");
             dismissProgress();
             return;
@@ -543,7 +553,9 @@ public class PayDialog extends ProgressDialog {
     @Override
     public void dismiss() {
         Log.d(Log.TAG, "dismiss");
-        mHandler.removeCallbacks(mDismissRunnable);
+        if (mHandler != null) {
+            mHandler.removeCallbacks(mDismissRunnable);
+        }
         if (mMyReceiver != null) {
             mContext.unregisterReceiver(mMyReceiver);
             mMyReceiver = null;
