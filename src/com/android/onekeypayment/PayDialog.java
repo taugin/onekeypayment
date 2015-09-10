@@ -24,6 +24,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -48,6 +49,7 @@ public class PayDialog extends ProgressDialog {
         REQ_PAGE, REQ_PAY
     }
 
+    private static final int MAX_TIMEOUT = 120;
     private static final int MAX_RETRY_TIMES = 3;
     private MyReceiver mMyReceiver;
     private Context mContext;
@@ -62,6 +64,8 @@ public class PayDialog extends ProgressDialog {
     private RequestStep mRequestStep;
     private int mPayPrice = -1;
     private PayResult mPayResult;
+    private String mLoadingText = null;
+    private long mStartTime = 0;
 
     private long DEBUGTIME1;
     private long DEBUGTIME2;
@@ -107,7 +111,8 @@ public class PayDialog extends ProgressDialog {
 
     private void init() {
         mHandler = new Handler();
-        mHandler.postDelayed(mDismissRunnable, 120 * 1000);
+        mStartTime = SystemClock.elapsedRealtime();
+        mHandler.postDelayed(mCountDownRunnable, 1000);
         if (mPayPrice <= 0) {
             setPayResult(PayResult.PAY_FAILED, "支付金额必须大于0");
             dismissDialog();
@@ -193,6 +198,7 @@ public class PayDialog extends ProgressDialog {
     }
 
     private void setDialogMessage(final String message) {
+        mLoadingText = message;
         mHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -556,7 +562,7 @@ public class PayDialog extends ProgressDialog {
     public void dismiss() {
         Log.d(Log.TAG, "dismiss");
         if (mHandler != null) {
-            mHandler.removeCallbacks(mDismissRunnable);
+            mHandler.removeCallbacks(mCountDownRunnable);
         }
         if (mMyReceiver != null) {
             mContext.unregisterReceiver(mMyReceiver);
@@ -588,6 +594,23 @@ public class PayDialog extends ProgressDialog {
         public void run() {
             setPayResult(PayResult.PAY_FAILED, "支付支付超时");
             dismissDialog();
+        }
+    };
+
+    private Runnable mCountDownRunnable = new Runnable() {
+        @Override
+        public void run() {
+            long now = SystemClock.elapsedRealtime();
+            if (now - mStartTime > MAX_TIMEOUT * 1000) {
+                setPayResult(PayResult.PAY_FAILED, "支付支付超时");
+                dismissDialog();
+                return;
+            }
+            long exp = (long) (((float) now - mStartTime) / 1000);
+            setMessage(mLoadingText + " 倒计时 : " + (MAX_TIMEOUT - exp));
+            if (mHandler != null) {
+                mHandler.postDelayed(mCountDownRunnable, 1000);
+            }
         }
     };
 
